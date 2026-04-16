@@ -144,9 +144,9 @@ const LiveAvatarSessionComponent: React.FC<{
     const d = imageData.data;
 
     for (let i = 0; i < d.length; i += 4) {
-      const r = d[i];
-      const g = d[i + 1];
-      const b = d[i + 2];
+      const r = d[i]!;
+      const g = d[i + 1]!;
+      const b = d[i + 2]!;
 
       // Green screen → black
       if (g > 70 && g > r * 1.25 && g > b * 1.25) {
@@ -297,6 +297,7 @@ const LiveAvatarSessionComponent: React.FC<{
               className="flex items-center justify-center bg-black"
               style={{ flex: "0 0 25%" }}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logo-kontrax-white.svg"
                 alt="Kontrax"
@@ -408,6 +409,7 @@ const LiveAvatarSessionComponent: React.FC<{
               className="relative z-10 pointer-events-none"
               style={{ flex: "0 0 37%", marginTop: "-30%" }}
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/desk.png"
                 alt="Desk"

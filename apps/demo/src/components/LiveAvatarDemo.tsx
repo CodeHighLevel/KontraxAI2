@@ -12,6 +12,7 @@ export const LiveAvatarDemo = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [manualToken, setManualToken] = useState("");
+  const [manualMode] = useState<SessionMode>("FULL");
   const [isLandingFullscreen, setIsLandingFullscreen] = useState(false);
   const [startInFullscreen, setStartInFullscreen] = useState(false);
   const landingFrameRef = useRef<HTMLDivElement>(null);
@@ -43,6 +44,7 @@ export const LiveAvatarDemo = () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleStartLiteSession = async () => {
     setLoading(true);
     setError(null);
@@ -65,6 +67,7 @@ export const LiveAvatarDemo = () => {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleStartWithToken = () => {
     const trimmed = manualToken.trim();
     if (!trimmed) {
