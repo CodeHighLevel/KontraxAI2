@@ -1,7 +1,6 @@
 import {
   Room,
   RoomEvent,
-  VideoPresets,
   RemoteVideoTrack,
   RemoteAudioTrack,
   supportsAdaptiveStream,
@@ -80,7 +79,7 @@ export class LiveAvatarSession extends (EventEmitter as new () => TypedEmitter<
         : false,
       dynacast: supportsDynacast(),
       videoCaptureDefaults: {
-        resolution: VideoPresets.h720.resolution,
+        resolution: { width: 720, height: 1280, frameRate: 30 },
       },
     });
     this._voiceChat = new VoiceChat(this.room);

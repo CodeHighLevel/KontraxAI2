@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { LiveAvatarSession } from "./LiveAvatarSession";
 import { SessionInteractivityMode } from "@heygen/liveavatar-web-sdk";
 
@@ -12,7 +12,9 @@ export const LiveAvatarDemo = () => {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [manualToken, setManualToken] = useState("");
-  const [manualMode, setManualMode] = useState<SessionMode>("FULL");
+  const [isLandingFullscreen, setIsLandingFullscreen] = useState(false);
+  const [startInFullscreen, setStartInFullscreen] = useState(false);
+  const landingFrameRef = useRef<HTMLDivElement>(null);
 
   const handleStartFullSession = async (pushToTalk: boolean = false) => {
     setLoading(true);
@@ -88,74 +90,89 @@ export const LiveAvatarDemo = () => {
   }, [mode]);
 
   return (
-    <div className="w-full h-full flex flex-col items-center justify-center">
+    <div className="w-full h-full flex flex-col items-center justify-center relative">
       {!sessionToken ? (
-        <div className="w-full max-w-lg flex flex-col items-center gap-6 p-8">
-          <div className="text-center mb-2">
-            <h1 className="text-2xl font-semibold text-white mb-1">
-              LiveAvatar Demo
-            </h1>
-            <p className="text-sm text-gray-400">
-              Choose a session mode to get started
-            </p>
-          </div>
-
-          {error && (
-            <div className="w-full px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-              {error}
+        <div
+          ref={landingFrameRef}
+          className={`relative overflow-hidden bg-black ${isLandingFullscreen ? "w-full h-full" : "rounded-lg"}`}
+          style={
+            isLandingFullscreen
+              ? {}
+              : { aspectRatio: "9/32", maxHeight: "90vh" }
+          }
+        >
+          {isLandingFullscreen && <div className="absolute inset-0 bg-black" />}
+          <div
+            className={`relative flex flex-col overflow-hidden ${isLandingFullscreen ? "h-full mx-auto" : "w-full h-full"}`}
+            style={
+              isLandingFullscreen
+                ? { aspectRatio: "9/32", maxHeight: "100vh" }
+                : {}
+            }
+          >
+            <button
+              onClick={() => {
+                if (isLandingFullscreen) {
+                  document.exitFullscreen();
+                  setIsLandingFullscreen(false);
+                } else if (landingFrameRef.current) {
+                  landingFrameRef.current.requestFullscreen();
+                  setIsLandingFullscreen(true);
+                }
+              }}
+              className="absolute top-3 right-3 z-20 px-3 py-1.5 text-xs font-medium rounded-lg bg-black/60 text-white/70 hover:bg-black/80 hover:text-white backdrop-blur-sm transition-colors"
+            >
+              {isLandingFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+            </button>
+            <div className="landing-ambient">
+              <div className="orb-1" />
+              <div className="orb-2" />
+              <div className="orb-3" />
+              <div className="grid-overlay" />
+              <div className="holo-ring" />
+              <div className="holo-ring-2" />
+              <div className="scanline" />
+              <div className="particle" />
+              <div className="particle" />
+              <div className="particle" />
+              <div className="particle" />
+              <div className="particle" />
+              <div className="particle" />
             </div>
-          )}
+            <div className="relative z-10 w-full h-full flex flex-col items-center justify-center gap-6 p-8">
+              <div className="text-center mb-2">
+                <h1
+                  className="text-3xl font-bold text-white mb-1"
+                  style={{
+                    textShadow:
+                      "0 0 20px rgba(0, 230, 150, 0.4), 0 0 40px rgba(0, 230, 150, 0.15)",
+                  }}
+                >
+                  Kontrax AI
+                </h1>
+              </div>
 
-          <div className="w-full flex flex-col gap-3">
-            <button
-              onClick={() => handleStartFullSession(false)}
-              disabled={loading}
-              className="w-full px-6 py-2.5 rounded-lg bg-white/10 text-white font-medium text-base border border-white/20 hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? "Starting..." : "Full Mode"}
-            </button>
-            <button
-              onClick={() => handleStartFullSession(true)}
-              disabled={loading}
-              className="w-full px-6 py-2.5 rounded-lg bg-white/10 text-white font-medium text-base border border-white/20 hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? "Starting..." : "Full Mode (Push to Talk)"}
-            </button>
-            <button
-              onClick={handleStartLiteSession}
-              disabled={loading}
-              className="w-full px-6 py-2.5 rounded-lg bg-white/10 text-white font-medium text-base border border-white/20 hover:bg-white/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? "Starting..." : "Lite Mode"}
-            </button>
-          </div>
+              {error && (
+                <div className="w-full px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                  {error}
+                </div>
+              )}
 
-          <div className="w-full flex flex-col items-center gap-3 pt-6 border-t border-white/10">
-            <span className="text-xs text-gray-500 uppercase tracking-wider">
-              Or use an existing token
-            </span>
-            <input
-              type="text"
-              value={manualToken}
-              onChange={(e) => setManualToken(e.target.value)}
-              placeholder="Paste session token"
-              className="w-full px-4 py-2.5 rounded-lg bg-white/5 text-white text-sm border border-white/10 focus:outline-none focus:border-white/30 placeholder-gray-500 transition-colors"
-            />
-            <select
-              value={manualMode}
-              onChange={(e) => setManualMode(e.target.value as SessionMode)}
-              className="w-full px-4 py-2.5 rounded-lg bg-white/5 text-white text-sm border border-white/10 focus:outline-none focus:border-white/30 transition-colors"
-            >
-              <option value="FULL">Full Mode</option>
-              <option value="FULL_PTT">Full Mode (Push To Talk)</option>
-              <option value="LITE">Lite Mode</option>
-            </select>
-            <button
-              onClick={handleStartWithToken}
-              className="w-full px-6 py-2.5 rounded-lg bg-white/10 text-white font-medium text-base border border-white/20 hover:bg-white/20 transition-colors"
-            >
-              Connect
-            </button>
+              <button
+                onClick={() => {
+                  setStartInFullscreen(isLandingFullscreen);
+                  handleStartFullSession(false);
+                }}
+                disabled={loading}
+                className="px-8 py-3 rounded-lg bg-green-600 text-white font-medium text-lg border border-green-500 hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  boxShadow:
+                    "0 0 20px rgba(0, 230, 150, 0.3), 0 0 40px rgba(0, 230, 150, 0.1)",
+                }}
+              >
+                {loading ? "Зареждане..." : "Започни Разговор"}
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -164,6 +181,7 @@ export const LiveAvatarDemo = () => {
           sessionAccessToken={sessionToken}
           voiceChatConfig={voiceChatConfig}
           onSessionStopped={onSessionStopped}
+          startInFullscreen={startInFullscreen}
         />
       )}
     </div>

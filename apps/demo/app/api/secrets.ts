@@ -1,16 +1,16 @@
-export const API_KEY = "YOUR_API_KEY";
+export const API_KEY = "d109dd5e-31fb-11f1-8d28-066a7fa2e369";
 export const API_URL = "https://api.liveavatar.com";
-export const AVATAR_ID = "dd73ea75-1218-4ef3-92ce-606d5f7fbc0a";
+export const AVATAR_ID = "09919247-f4b2-45d8-a75e-86fc2fceaebf";
 
 // When true, we will call everything in Sandbox mode.
 // Useful for integration and development.
-export const IS_SANDBOX = true;
+export const IS_SANDBOX = false;
 
 // FULL MODE Customizations
 // Wayne's avatar voice and context
-export const VOICE_ID = "c2527536-6d1f-4412-a643-53a3497dada9";
-export const CONTEXT_ID = "5b9dba8a-aa31-11f0-a6ee-066a7fa2e369";
-export const LANGUAGE = "en";
+export const VOICE_ID = "864a26b8-bfba-4435-9cc5-1dd593de5ca7";
+export const CONTEXT_ID = "54dda3be-e849-4989-bb94-d09ef3161077";
+export const LANGUAGE = "bg";
 
 // LITE MODE Customizations
 export const ELEVENLABS_API_KEY = "YOUR_ELEVENLABS_API_KEY";

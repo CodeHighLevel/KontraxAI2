@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   LiveAvatarContextProvider,
   useSession,
@@ -61,7 +61,8 @@ const LiveAvatarSessionComponent: React.FC<{
   mode: SessionMode;
   onSessionStopped: () => void;
   hasVoiceChat: boolean;
-}> = ({ mode, onSessionStopped, hasVoiceChat }) => {
+  startInFullscreen?: boolean;
+}> = ({ mode, onSessionStopped, hasVoiceChat, startInFullscreen }) => {
   const [message, setMessage] = useState("");
   const {
     sessionState,
@@ -97,8 +98,123 @@ const LiveAvatarSessionComponent: React.FC<{
   const { sendMessage } = useTextChat(textChatMode);
   const chatMessages = useChatHistory();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [videoHeight, setVideoHeight] = useState<number>(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [videoFilterEnabled, setVideoFilterEnabled] = useState(true);
+  const animFrameRef = useRef<number>(0);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const skipFrame = useRef(false);
+
+  const processVideoFrame = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.paused || video.ended || !video.videoWidth) {
+      animFrameRef.current = requestAnimationFrame(processVideoFrame);
+      return;
+    }
+
+    // Process every other frame for performance
+    skipFrame.current = !skipFrame.current;
+    if (skipFrame.current) {
+      animFrameRef.current = requestAnimationFrame(processVideoFrame);
+      return;
+    }
+
+    if (!ctxRef.current) {
+      ctxRef.current = canvas.getContext("2d", { willReadFrequently: true });
+    }
+    const ctx = ctxRef.current;
+    if (!ctx) {
+      animFrameRef.current = requestAnimationFrame(processVideoFrame);
+      return;
+    }
+
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
+
+    ctx.drawImage(video, 0, 0, w, h);
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const d = imageData.data;
+
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i];
+      const g = d[i + 1];
+      const b = d[i + 2];
+
+      // Green screen → black
+      if (g > 70 && g > r * 1.25 && g > b * 1.25) {
+        d[i] = 0;
+        d[i + 1] = 0;
+        d[i + 2] = 0;
+        continue;
+      }
+
+      // Pink/magenta suit (#ED0D7F, #D80060, #DA0266, #EC0D80 range) → green
+      if (r > 160 && g < 80 && b > 40 && b < 160 && r > b * 1.3) {
+        const brightness = (r + g + b) / 3;
+        d[i] = Math.round(brightness * 0.15);
+        d[i + 1] = Math.min(255, Math.round(brightness * 1.2));
+        d[i + 2] = Math.round(brightness * 0.15);
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    animFrameRef.current = requestAnimationFrame(processVideoFrame);
+  }, []);
+
+  useEffect(() => {
+    if (videoFilterEnabled && isStreamReady) {
+      ctxRef.current = null;
+      animFrameRef.current = requestAnimationFrame(processVideoFrame);
+    }
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+    };
+  }, [videoFilterEnabled, isStreamReady, processVideoFrame]);
+
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  useEffect(() => {
+    if (!startInFullscreen) return;
+    const enterFs = () => {
+      if (frameRef.current) {
+        frameRef.current.requestFullscreen().catch(() => {});
+      }
+    };
+    if (document.fullscreenElement) {
+      document
+        .exitFullscreen()
+        .then(() => {
+          setTimeout(enterFs, 100);
+        })
+        .catch(() => {
+          setTimeout(enterFs, 100);
+        });
+    } else {
+      setTimeout(enterFs, 100);
+    }
+  }, [startInFullscreen]);
+
+  const toggleFullscreen = () => {
+    if (!isFullscreen && frameRef.current) {
+      frameRef.current.requestFullscreen();
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
+  };
 
   useEffect(() => {
     if (sessionState === SessionState.DISCONNECTED) {
@@ -145,71 +261,161 @@ const LiveAvatarSessionComponent: React.FC<{
     <div className="w-full max-w-[1400px] h-full flex flex-col gap-4 py-4">
       {/* Video + Chat row */}
       <div className="w-full flex flex-row items-start justify-center gap-4">
-        <div className="relative overflow-hidden rounded-lg flex flex-col items-center justify-center bg-black">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            className="w-full h-full object-contain"
-          />
-          {/* Overlay status badges */}
-          <div className="absolute top-3 left-3 flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-sm">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  sessionState === SessionState.CONNECTED
-                    ? "bg-green-400"
-                    : sessionState === SessionState.CONNECTING
-                      ? "bg-yellow-400 animate-pulse"
-                      : "bg-gray-500"
-                }`}
-              />
-              <span className="text-xs text-white/70 font-medium uppercase tracking-wider">
-                {sessionState}
-              </span>
-            </div>
-            <span
-              className={`text-xs font-medium uppercase tracking-wider px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-sm ${qualityColor}`}
-            >
-              {connectionQuality}
-            </span>
-          </div>
-          {/* Talking indicators */}
-          <div className="absolute bottom-3 left-3 flex items-center gap-2">
-            {(mode === "FULL" || mode === "FULL_PTT") && (
-              <div
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors ${
-                  isUserTalking
-                    ? "bg-blue-500/30 border border-blue-400/30"
-                    : "bg-black/40"
+        <div
+          ref={frameRef}
+          className={`relative overflow-hidden flex flex-col bg-black ${isFullscreen ? "w-full h-full items-center justify-center" : "rounded-lg"}`}
+          style={isFullscreen ? {} : { aspectRatio: "9/32", maxHeight: "90vh" }}
+        >
+          {isFullscreen && <div className="absolute inset-0 bg-black" />}
+          <div
+            className={`relative flex flex-col overflow-hidden ${isFullscreen ? "h-full" : "w-full h-full"}`}
+            style={
+              isFullscreen ? { aspectRatio: "9/32", maxHeight: "100vh" } : {}
+            }
+          >
+            {/* Top-right controls */}
+            <div className="absolute top-3 right-3 z-20 flex gap-2">
+              <button
+                onClick={() => setVideoFilterEnabled((v) => !v)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg backdrop-blur-sm transition-colors ${
+                  videoFilterEnabled
+                    ? "bg-green-500/30 text-green-300 border border-green-400/30 hover:bg-green-500/40"
+                    : "bg-black/60 text-white/70 hover:bg-black/80 hover:text-white"
                 }`}
               >
-                <div
-                  className={`w-2 h-2 rounded-full transition-colors ${isUserTalking ? "bg-blue-400 animate-pulse" : "bg-gray-500"}`}
-                />
-                <span className="text-xs text-white/70 font-medium">You</span>
-              </div>
-            )}
+                {videoFilterEnabled ? "Filter ON" : "Filter OFF"}
+              </button>
+              <button
+                onClick={toggleFullscreen}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-black/60 text-white/70 hover:bg-black/80 hover:text-white backdrop-blur-sm transition-colors"
+              >
+                {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              </button>
+            </div>
+            {/* Top: Black space with spinning Kontrax logo */}
             <div
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors ${
-                isAvatarTalking
-                  ? "bg-purple-500/30 border border-purple-400/30"
-                  : "bg-black/40"
-              }`}
+              className="flex items-center justify-center bg-black"
+              style={{ flex: "0 0 25%" }}
             >
-              <div
-                className={`w-2 h-2 rounded-full transition-colors ${isAvatarTalking ? "bg-purple-400 animate-pulse" : "bg-gray-500"}`}
+              <img
+                src="/logo-kontrax-white.svg"
+                alt="Kontrax"
+                className="w-48"
+                style={{ animation: "spinY 4s linear infinite" }}
               />
-              <span className="text-xs text-white/70 font-medium">Avatar</span>
+            </div>
+            {/* Middle: Video area */}
+            <div className="relative flex-1 overflow-hidden">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{
+                  transform: "scale(0.5)",
+                  zIndex: videoFilterEnabled ? 0 : 1,
+                }}
+              />
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 w-full h-full object-cover"
+                style={{
+                  transform: "scale(0.5)",
+                  zIndex: videoFilterEnabled ? 1 : 0,
+                  display: videoFilterEnabled ? "block" : "none",
+                }}
+              />
+              {/* Hologram projection effect - scaled to match video */}
+              <div
+                className="absolute inset-0 z-20 pointer-events-none"
+                style={{ transform: "scale(0.5)" }}
+              >
+                <div className="hologram-beams" />
+                <div className="hologram-base-glow" />
+                <div className="hologram-laser-left" />
+                <div className="hologram-laser-right" />
+                <div className="hologram-laser-center-left" />
+                <div className="hologram-laser-center-right" />
+                <div className="hologram-laser-flash" />
+                <div className="hologram-scanline" />
+                <div className="hologram-edge-glow" />
+              </div>
+              {/* Overlay status badges */}
+              <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-sm">
+                  <div
+                    className={`w-2 h-2 rounded-full ${
+                      sessionState === SessionState.CONNECTED
+                        ? "bg-green-400"
+                        : sessionState === SessionState.CONNECTING
+                          ? "bg-yellow-400 animate-pulse"
+                          : "bg-gray-500"
+                    }`}
+                  />
+                  <span className="text-xs text-white/70 font-medium uppercase tracking-wider">
+                    {sessionState}
+                  </span>
+                </div>
+                <span
+                  className={`text-xs font-medium uppercase tracking-wider px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-sm ${qualityColor}`}
+                >
+                  {connectionQuality}
+                </span>
+              </div>
+              {/* Talking indicators */}
+              <div className="absolute bottom-3 left-3 flex items-center gap-2 z-10">
+                {(mode === "FULL" || mode === "FULL_PTT") && (
+                  <div
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors ${
+                      isUserTalking
+                        ? "bg-blue-500/30 border border-blue-400/30"
+                        : "bg-black/40"
+                    }`}
+                  >
+                    <div
+                      className={`w-2 h-2 rounded-full transition-colors ${isUserTalking ? "bg-blue-400 animate-pulse" : "bg-gray-500"}`}
+                    />
+                    <span className="text-xs text-white/70 font-medium">
+                      You
+                    </span>
+                  </div>
+                )}
+                <div
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full backdrop-blur-sm transition-colors ${
+                    isAvatarTalking
+                      ? "bg-purple-500/30 border border-purple-400/30"
+                      : "bg-black/40"
+                  }`}
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full transition-colors ${isAvatarTalking ? "bg-purple-400 animate-pulse" : "bg-gray-500"}`}
+                  />
+                  <span className="text-xs text-white/70 font-medium">
+                    Avatar
+                  </span>
+                </div>
+              </div>
+              {/* Stop button */}
+              <button
+                className="absolute bottom-3 right-3 px-4 py-2 text-sm font-medium rounded-lg bg-red-500/80 text-white hover:bg-red-500 backdrop-blur-sm transition-colors z-10"
+                onClick={() => stopSession()}
+              >
+                End Session
+              </button>
+            </div>
+            {/* Bottom: Desk image overlaid in front of the video */}
+            <div
+              className="relative z-10 pointer-events-none"
+              style={{ flex: "0 0 37%", marginTop: "-30%" }}
+            >
+              <img
+                src="/desk.png"
+                alt="Desk"
+                className="w-full h-full object-cover object-top"
+                style={{ transform: "scale(1.2)" }}
+              />
             </div>
           </div>
-          {/* Stop button */}
-          <button
-            className="absolute bottom-3 right-3 px-4 py-2 text-sm font-medium rounded-lg bg-red-500/80 text-white hover:bg-red-500 backdrop-blur-sm transition-colors"
-            onClick={() => stopSession()}
-          >
-            End Session
-          </button>
         </div>
 
         {/* Chat History */}
@@ -432,11 +638,13 @@ export const LiveAvatarSession: React.FC<{
   sessionAccessToken: string;
   onSessionStopped: () => void;
   voiceChatConfig?: boolean | VoiceChatConfig;
+  startInFullscreen?: boolean;
 }> = ({
   mode,
   sessionAccessToken,
   onSessionStopped,
   voiceChatConfig = true,
+  startInFullscreen,
 }) => {
   return (
     <LiveAvatarContextProvider
@@ -447,6 +655,7 @@ export const LiveAvatarSession: React.FC<{
         mode={mode}
         onSessionStopped={onSessionStopped}
         hasVoiceChat={!!voiceChatConfig}
+        startInFullscreen={startInFullscreen}
       />
     </LiveAvatarContextProvider>
   );
